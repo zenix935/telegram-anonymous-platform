@@ -215,6 +215,45 @@ def get_cancel_inline_keyboard() -> InlineKeyboardMarkup:
     )
 
 
+def get_channel_management_keyboard(
+    channel_id: str, is_active: bool, has_slug: bool
+) -> InlineKeyboardMarkup:
+    """Keyboard for managing a connected channel."""
+    toggle_text = (
+        get_text("btn_toggle_link_disable")
+        if is_active
+        else get_text("btn_toggle_link_enable")
+    )
+    toggle_action = f"ch_manage:toggle:{channel_id}"
+
+    buttons = [
+        [
+            InlineKeyboardButton(text=toggle_text, callback_data=toggle_action),
+            InlineKeyboardButton(
+                text=get_text("btn_regenerate_link"),
+                callback_data=f"ch_manage:regen:{channel_id}",
+            ),
+        ],
+        [
+            InlineKeyboardButton(
+                text=get_text("btn_set_custom_slug"),
+                callback_data=f"ch_manage:set_slug:{channel_id}",
+            ),
+        ],
+    ]
+    if has_slug:
+        buttons[1].append(
+            InlineKeyboardButton(
+                text=get_text("btn_remove_custom_slug"),
+                callback_data=f"ch_manage:remove_slug:{channel_id}",
+            )
+        )
+    buttons.append(
+        [InlineKeyboardButton(text=get_text("btn_back"), callback_data="nav:channels")]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
 def get_admin_panel_keyboard() -> InlineKeyboardMarkup:
     """Admin dashboard navigation."""
     return InlineKeyboardMarkup(
