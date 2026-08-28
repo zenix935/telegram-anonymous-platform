@@ -80,12 +80,8 @@ MESSAGES: Dict[str, Dict[str, str]] = {
         "conversation_closed_by_owner": "🚪 مخاطب به این گفت‌وگو پایان داد.",
 
         # Personal Anonymous Chat (Owner side / Inbox)
-        "incoming_anonymous_message": (
-            "📩 <b>پیام ناشناس جدید دریافت شد!</b>\n"
-            "👤 فرستنده: <b>{sender_alias}</b>\n"
-            "📅 زمان: <code>{time}</code>\n\n"
-            "👇 برای ارسال پاسخ، روی دکمه «پاسخ» در زیر همین پیام کلیک کنید:"
-        ),
+        "incoming_anonymous_message_header": "📩 <b>پیام ناشناس جدید دریافت شد!</b>",
+        "incoming_anonymous_message_footer": "👇 برای ارسال پاسخ، روی دکمه «پاسخ» در زیر این پیام کلیک کنید.",
         "reply_mode_activated": (
             "↩️ <b>حالت پاسخ به {sender_alias} فعال شد.</b>\n\n"
             "پیام بعدی شما مستقیماً و منحصراً به همین گفت‌وگو ارسال خواهد شد.\n"

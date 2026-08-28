@@ -1,5 +1,6 @@
 """General commands and navigation handlers (/start, /help, main menu)."""
 
+import uuid
 from aiogram import Router, types, F
 from aiogram.filters import CommandStart, Command, CommandObject
 from aiogram.fsm.context import FSMContext
@@ -9,7 +10,8 @@ from app.config.messages import get_text
 from app.database.models import User
 from app.bot.keyboards.inline import (
     get_main_menu_inline_keyboard,
-    get_personal_link_management_keyboard,
+    get_cancel_inline_keyboard,
+    get_settings_keyboard,
 )
 from app.services.links.link_service import LinkService
 from app.bot.states.fsm import PersonalChatStates, ChannelPublishStates
@@ -111,6 +113,129 @@ async def handle_nav_help(call: types.CallbackQuery, db_user: User):
         await call.message.edit_text(get_text("help"), reply_markup=kb, parse_mode="HTML")
     except Exception:
         await call.message.answer(get_text("help"), reply_markup=kb, parse_mode="HTML")
+    await call.answer()
+
+
+@router.callback_query(F.data == "nav:settings")
+async def handle_nav_settings(call: types.CallbackQuery, db_user: User):
+    """Settings menu callback."""
+    kb = get_settings_keyboard()
+    settings_text = (
+        "⚙️ <b>تنظیمات حساب و ربات:</b>\n\n"
+        "از گزینه‌های زیر بخش مورد نظر خود را برای ویرایش یا مدیریت انتخاب کنید:"
+    )
+    try:
+        await call.message.edit_text(settings_text, reply_markup=kb, parse_mode="HTML")
+    except Exception:
+        await call.message.answer(settings_text, reply_markup=kb, parse_mode="HTML")
+    await call.answer()
+
+
+@router.callback_query(F.data == "nav:blocked_list")
+async def handle_view_blocked_list(call: types.CallbackQuery, db_session: AsyncSession, db_user: User):
+    """Display list of blocked anonymous users with pseudonymized IDs."""
+    from app.database.repositories import ModerationRepository
+    from app.security.tokens import generate_opaque_user_id
+
+    mod_repo = ModerationRepository(db_session)
+    blocked_list = await mod_repo.get_blocked_users_by_blocker(db_user.id)
+
+    if not blocked_list:
+        kb = types.InlineKeyboardMarkup(
+            inline_keyboard=[
+                [types.InlineKeyboardButton(text=get_text("btn_back"), callback_data="nav:settings")]
+            ]
+        )
+        await call.message.edit_text(
+            "🚫 <b>لیست کاربران مسدود شده:</b>\n\nشما در حال حاضر هیچ کاربری را مسدود نکرده‌اید.",
+            reply_markup=kb,
+            parse_mode="HTML",
+        )
+        await call.answer()
+        return
+
+    buttons = []
+    for b in blocked_list:
+        opaque_id = generate_opaque_user_id(str(b.blocked_id))
+        buttons.append(
+            [
+                types.InlineKeyboardButton(text=f"👤 {opaque_id}", callback_data="noop"),
+                types.InlineKeyboardButton(
+                    text="🔓 رفع انسداد",
+                    callback_data=f"unblock:user:{b.blocked_id}",
+                ),
+            ]
+        )
+
+    buttons.append([types.InlineKeyboardButton(text=get_text("btn_back"), callback_data="nav:settings")])
+    kb = types.InlineKeyboardMarkup(inline_keyboard=buttons)
+
+    await call.message.edit_text(
+        "🚫 <b>لیست کاربران مسدود شده:</b>\n\n"
+        "در زیر شناسه‌های رمزنگاری‌شده کاربرانی که مسدود کرده‌اید را مشاهده می‌کنید. "
+        "برای رفع انسداد روی دکمه مربوطه کلیک کنید:",
+        reply_markup=kb,
+        parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("unblock:user:"))
+async def handle_unblock_user_callback(call: types.CallbackQuery, db_session: AsyncSession, db_user: User):
+    """Unblock a user by UUID."""
+    from app.database.repositories import ModerationRepository
+    from app.security.tokens import generate_opaque_user_id
+
+    blocked_id_str = call.data.split(":")[2]
+    blocked_uuid = uuid.UUID(blocked_id_str)
+
+    mod_repo = ModerationRepository(db_session)
+    await mod_repo.unblock_user(blocker_id=db_user.id, blocked_id=blocked_uuid)
+
+    await call.answer("کاربر با موفقیت رفع انسداد شد.", show_alert=True)
+
+    # Refresh list
+    blocked_list = await mod_repo.get_blocked_users_by_blocker(db_user.id)
+    if not blocked_list:
+        kb = types.InlineKeyboardMarkup(
+            inline_keyboard=[
+                [types.InlineKeyboardButton(text=get_text("btn_back"), callback_data="nav:settings")]
+            ]
+        )
+        await call.message.edit_text(
+            "🚫 <b>لیست کاربران مسدود شده:</b>\n\nشما در حال حاضر هیچ کاربری را مسدود نکرده‌اید.",
+            reply_markup=kb,
+            parse_mode="HTML",
+        )
+        return
+
+    buttons = []
+    for b in blocked_list:
+        opaque_id = generate_opaque_user_id(str(b.blocked_id))
+        buttons.append(
+            [
+                types.InlineKeyboardButton(text=f"👤 {opaque_id}", callback_data="noop"),
+                types.InlineKeyboardButton(
+                    text="🔓 رفع انسداد",
+                    callback_data=f"unblock:user:{b.blocked_id}",
+                ),
+            ]
+        )
+
+    buttons.append([types.InlineKeyboardButton(text=get_text("btn_back"), callback_data="nav:settings")])
+    kb = types.InlineKeyboardMarkup(inline_keyboard=buttons)
+    await call.message.edit_text(
+        "🚫 <b>لیست کاربران مسدود شده:</b>\n\n"
+        "در زیر شناسه‌های رمزنگاری‌شده کاربرانی که مسدود کرده‌اید را مشاهده می‌کنید. "
+        "برای رفع انسداد روی دکمه مربوطه کلیک کنید:",
+        reply_markup=kb,
+        parse_mode="HTML",
+    )
+
+
+@router.callback_query(F.data == "noop")
+async def handle_noop_callback(call: types.CallbackQuery):
+    """No-op for informative buttons."""
     await call.answer()
 
 

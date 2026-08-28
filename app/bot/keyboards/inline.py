@@ -254,6 +254,22 @@ def get_channel_management_keyboard(
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 
 
+def get_settings_keyboard() -> InlineKeyboardMarkup:
+    """Settings menu navigation keyboard."""
+    buttons = [
+        [
+            InlineKeyboardButton(text="🔗 مدیریت لینک ناشناس", callback_data="nav:my_link"),
+            InlineKeyboardButton(text="👤 نام مستعار", callback_data="nav:nickname"),
+        ],
+        [
+            InlineKeyboardButton(text="📢 کانال‌های من", callback_data="nav:channels"),
+            InlineKeyboardButton(text="🚫 لیست بلاک‌ها", callback_data="nav:blocked_list"),
+        ],
+        [InlineKeyboardButton(text=get_text("btn_back"), callback_data="nav:main")],
+    ]
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
 def get_admin_panel_keyboard() -> InlineKeyboardMarkup:
     """Admin dashboard navigation."""
     return InlineKeyboardMarkup(

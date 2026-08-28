@@ -46,10 +46,10 @@ class Settings(BaseSettings):
     token_entropy_bytes: int = Field(default=16, description="Entropy bytes for random tokens")
 
     # Rate Limiting Defaults
-    rate_limit_messages_per_minute: int = Field(default=5, description="Max messages per minute per user")
-    rate_limit_messages_per_hour: int = Field(default=50, description="Max messages per hour per user")
-    rate_limit_messages_per_day: int = Field(default=200, description="Max messages per day per user")
-    duplicate_message_cooldown_seconds: int = Field(default=30, description="Cooldown for identical messages")
+    rate_limit_messages_per_minute: int = Field(default=10, description="Max messages per minute per user")
+    rate_limit_messages_per_hour: int = Field(default=100, description="Max messages per hour per user")
+    rate_limit_messages_per_day: int = Field(default=400, description="Max messages per day per user")
+    duplicate_message_cooldown_seconds: int = Field(default=15, description="Cooldown for identical messages")
 
     # Content Limits
     max_message_length: int = Field(default=4000, description="Maximum allowed text message length")

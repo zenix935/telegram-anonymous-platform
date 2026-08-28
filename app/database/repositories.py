@@ -473,6 +473,15 @@ class ModerationRepository:
         result = await self.session.execute(stmt)
         return result.rowcount > 0
 
+    async def get_blocked_users_by_blocker(self, blocker_id: uuid.UUID) -> List[Block]:
+        query = (
+            select(Block)
+            .where(Block.blocker_id == blocker_id)
+            .order_by(Block.created_at.desc())
+        )
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
+
     async def create_report(
         self,
         reporter_id: uuid.UUID,

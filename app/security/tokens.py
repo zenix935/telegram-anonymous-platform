@@ -76,3 +76,9 @@ def sanitize_nickname(nickname: str) -> Optional[str]:
 def compute_content_hash(text: str) -> str:
     """Compute sha256 hash of message text for duplicate detection."""
     return hashlib.sha256(text.strip().encode("utf-8")).hexdigest()
+
+
+def generate_opaque_user_id(user_uuid: str) -> str:
+    """Generate a masked, pseudonymized opaque ID for users (e.g. Anon#A1B2C3D4)."""
+    digest = hashlib.sha256(str(user_uuid).encode("utf-8")).hexdigest()[:8].upper()
+    return f"Anon#{digest}"

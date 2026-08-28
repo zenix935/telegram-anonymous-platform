@@ -168,7 +168,7 @@ class Channel(Base):
         nullable=False,
     )
     enable_seen_button: Mapped[bool] = mapped_column(
-        Boolean, default=True, nullable=False
+        Boolean, default=False, nullable=False
     )
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False

@@ -91,18 +91,6 @@ class ChannelPublishingService:
             if not sent_msg:
                 return False, None, "channel_submission_failed"
 
-            # Attach Seen Button if enabled
-            if channel.enable_seen_button:
-                kb = get_seen_button_inline_keyboard(str(channel.id), sent_msg.message_id)
-                try:
-                    await self.bot.edit_message_reply_markup(
-                        chat_id=channel.telegram_channel_id,
-                        message_id=sent_msg.message_id,
-                        reply_markup=kb,
-                    )
-                except Exception:
-                    pass  # Keep post published even if markup edit fails
-
             # Record in database
             db_msg = await self.seen_repo.record_channel_message(
                 channel_id=channel.id,
