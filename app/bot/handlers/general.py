@@ -58,8 +58,15 @@ async def handle_start_command(
             target_owner_id=str(personal_link.owner_id),
             link_id=str(personal_link.id),
         )
+        target_name = (
+            personal_link.owner.first_name
+            or (f"@{personal_link.owner.username}" if personal_link.owner.username else None)
+            or "کاربر"
+        )
         await message.answer(
-            get_text("sender_chat_opened"),
+            get_text("sender_chat_opened", target_name=target_name),
+            reply_markup=get_cancel_inline_keyboard(),
+            parse_mode="HTML",
         )
         return
 

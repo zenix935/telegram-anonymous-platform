@@ -503,12 +503,37 @@ class ModerationRepository:
     async def get_pending_reports(self, limit: int = 20) -> List[Report]:
         query = (
             select(Report)
+            .options(
+                selectinload(Report.conversation),
+            )
             .where(Report.status == ReportStatus.PENDING)
             .order_by(Report.created_at.asc())
             .limit(limit)
         )
         result = await self.session.execute(query)
         return list(result.scalars().all())
+
+    async def get_report_by_id(self, report_id: uuid.UUID) -> Optional[Report]:
+        query = (
+            select(Report)
+            .options(
+                selectinload(Report.conversation),
+            )
+            .where(Report.id == report_id)
+        )
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
+    async def resolve_report(
+        self, report_id: uuid.UUID, status: ReportStatus, moderator_notes: Optional[str] = None
+    ) -> bool:
+        stmt = (
+            update(Report)
+            .where(Report.id == report_id)
+            .values(status=status, moderator_notes=moderator_notes, updated_at=utcnow())
+        )
+        result = await self.session.execute(stmt)
+        return result.rowcount > 0
 
     async def count_pending_reports(self) -> int:
         query = select(func.count(Report.id)).where(Report.status == ReportStatus.PENDING)
