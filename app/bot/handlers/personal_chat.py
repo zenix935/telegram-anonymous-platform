@@ -201,7 +201,7 @@ async def handle_reply_to_specific_message(
     state: FSMContext,
 ):
     """
-    Owner clicks 'Reply' on an incoming message.
+    Participant (Owner or Sender) clicks 'Reply' on an incoming message.
     Sets explicit message-level reply target in Redis and activates reply state.
     """
     parts = call.data.split(":")
@@ -210,9 +210,12 @@ async def handle_reply_to_specific_message(
 
     conv_repo = ConversationRepository(db_session)
     conv = await conv_repo.get_by_id(uuid.UUID(conv_id_str))
-    if not conv or conv.owner_id != db_user.id:
+    if not conv or (conv.owner_id != db_user.id and conv.sender_id != db_user.id):
         await call.answer("گفت‌وگو یافت نشد.", show_alert=True)
         return
+
+    is_owner = (conv.owner_id == db_user.id)
+    target_alias = conv.sender_alias if is_owner else "مخاطب"
 
     # Set message-level reply target in Redis
     redis = await get_redis_pool()
@@ -221,7 +224,7 @@ async def handle_reply_to_specific_message(
         owner_telegram_id=call.from_user.id,
         recipient_telegram_message_id=delivered_tg_msg_id,
         conversation_id=str(conv.id),
-        sender_alias=conv.sender_alias,
+        sender_alias=target_alias,
     )
 
     await state.set_state(PersonalChatStates.replying_to_message)
@@ -230,7 +233,7 @@ async def handle_reply_to_specific_message(
     await call.message.reply(
         get_text(
             "reply_mode_activated",
-            sender_alias=conv.sender_alias,
+            sender_alias=target_alias,
             reply_target=f"msg_{delivered_tg_msg_id}",
         ),
         reply_markup=get_cancel_inline_keyboard(),
@@ -301,7 +304,7 @@ async def handle_owner_sending_reply(
     conv_repo = ConversationRepository(db_session)
     conv = await conv_repo.get_by_id(conv_id)
 
-    if not conv or conv.owner_id != db_user.id:
+    if not conv or (conv.owner_id != db_user.id and conv.sender_id != db_user.id):
         await state.clear()
         await message.answer("❌ گفت‌وگو معتبر نیست.")
         return
@@ -338,16 +341,31 @@ async def handle_owner_sending_reply(
         content_type = "sticker"
         media_file_id = message.sticker.file_id
 
+    reply_target_msg_id = int(active_target.get("msg_id") or 0)
+    is_owner = (conv.owner_id == db_user.id)
+
     chat_service = AnonymousChatService(db_session, bot, reply_target_service)
-    success, _ = await chat_service.deliver_owner_reply(
-        conversation=conv,
-        owner_user=db_user,
-        content_type=content_type,
-        text_content=message.text,
-        media_file_id=media_file_id,
-        caption=message.caption,
-        owner_tg_msg_id=message.message_id,
-    )
+    if is_owner:
+        success, _ = await chat_service.deliver_owner_reply(
+            conversation=conv,
+            owner_user=db_user,
+            content_type=content_type,
+            text_content=message.text,
+            media_file_id=media_file_id,
+            caption=message.caption,
+            owner_tg_msg_id=message.message_id,
+            reply_to_target_tg_msg_id=reply_target_msg_id,
+        )
+    else:
+        success, _ = await chat_service.deliver_sender_message(
+            conversation=conv,
+            sender_user=db_user,
+            content_type=content_type,
+            text_content=message.text,
+            media_file_id=media_file_id,
+            caption=message.caption,
+            sender_tg_msg_id=message.message_id,
+        )
 
     if success:
         await message.answer(

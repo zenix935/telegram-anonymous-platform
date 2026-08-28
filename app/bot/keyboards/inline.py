@@ -110,6 +110,25 @@ def get_reply_to_message_inline_keyboard(
     )
 
 
+def get_sender_reply_inline_keyboard(
+    delivered_tg_msg_id: int, conv_id: str
+) -> InlineKeyboardMarkup:
+    """
+    Direct Reply button attached to an answer message delivered to the sender.
+    Allows sender to continue the conversation thread.
+    """
+    return InlineKeyboardMarkup(
+        inline_keyboard=[
+            [
+                InlineKeyboardButton(
+                    text=get_text("btn_reply_msg"),
+                    callback_data=f"reply:msg:{delivered_tg_msg_id}:{conv_id}",
+                ),
+            ]
+        ]
+    )
+
+
 def get_inbox_inline_keyboard(
     conversations: List[Conversation], page: int = 0, total_count: int = 0
 ) -> InlineKeyboardMarkup:

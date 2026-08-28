@@ -194,14 +194,22 @@ class AnonymousChatService:
         media_file_id: Optional[str] = None,
         caption: Optional[str] = None,
         owner_tg_msg_id: Optional[int] = None,
+        reply_to_target_tg_msg_id: Optional[int] = None,
     ) -> Tuple[bool, Optional[ConversationMessage]]:
         """
         Deliver message from owner to the anonymous sender.
-        Routes solely to this conversation.
+        Routes solely to this conversation and replies directly to sender's original message if provided.
         """
         sender = await self.user_repo.get_by_id(conversation.sender_id)
         if not sender or sender.is_globally_banned:
             return False, None
+
+        # Resolve sender's original message ID in sender's chat
+        sender_reply_id = None
+        if reply_to_target_tg_msg_id and reply_to_target_tg_msg_id > 0:
+            target_msg = await self.conv_repo.get_message_by_recipient_tg_id(reply_to_target_tg_msg_id)
+            if target_msg and target_msg.sender_telegram_message_id:
+                sender_reply_id = target_msg.sender_telegram_message_id
 
         delivered_msg = None
         header = "💬 <b>پاسخ مخاطب به پیام ناشناس شما:</b>"
@@ -213,6 +221,7 @@ class AnonymousChatService:
                     chat_id=sender.telegram_id,
                     text=formatted_text,
                     parse_mode="HTML",
+                    reply_to_message_id=sender_reply_id,
                 )
             elif content_type == "photo":
                 cap = f"{header}\n\n{caption or ''}".strip()
@@ -221,6 +230,7 @@ class AnonymousChatService:
                     photo=media_file_id,
                     caption=cap,
                     parse_mode="HTML",
+                    reply_to_message_id=sender_reply_id,
                 )
             elif content_type == "voice":
                 delivered_msg = await self.bot.send_voice(
@@ -228,6 +238,7 @@ class AnonymousChatService:
                     voice=media_file_id,
                     caption=header,
                     parse_mode="HTML",
+                    reply_to_message_id=sender_reply_id,
                 )
             elif content_type == "video":
                 cap = f"{header}\n\n{caption or ''}".strip()
@@ -236,6 +247,7 @@ class AnonymousChatService:
                     video=media_file_id,
                     caption=cap,
                     parse_mode="HTML",
+                    reply_to_message_id=sender_reply_id,
                 )
             elif content_type == "document":
                 cap = f"{header}\n\n{caption or ''}".strip()
@@ -244,12 +256,14 @@ class AnonymousChatService:
                     document=media_file_id,
                     caption=cap,
                     parse_mode="HTML",
+                    reply_to_message_id=sender_reply_id,
                 )
             elif content_type == "sticker":
                 await self.bot.send_message(
                     chat_id=sender.telegram_id,
                     text=header,
                     parse_mode="HTML",
+                    reply_to_message_id=sender_reply_id,
                 )
                 delivered_msg = await self.bot.send_sticker(
                     chat_id=sender.telegram_id,
@@ -257,6 +271,17 @@ class AnonymousChatService:
                 )
 
             if delivered_msg:
+                from app.bot.keyboards.inline import get_sender_reply_inline_keyboard
+                kb = get_sender_reply_inline_keyboard(delivered_msg.message_id, str(conversation.id))
+                try:
+                    await self.bot.edit_message_reply_markup(
+                        chat_id=sender.telegram_id,
+                        message_id=delivered_msg.message_id,
+                        reply_markup=kb,
+                    )
+                except Exception:
+                    pass
+
                 db_msg = await self.conv_repo.add_message(
                     conversation_id=conversation.id,
                     sender_role=MessageSenderRole.OWNER,
