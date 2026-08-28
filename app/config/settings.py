@@ -1,6 +1,6 @@
 """Application configuration and settings using Pydantic Settings."""
 
-from typing import List, Optional
+from typing import List, Optional, Union
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
@@ -18,7 +18,7 @@ class Settings(BaseSettings):
     # Telegram Bot
     bot_token: str = Field(default="mock_token_for_env_test", description="Telegram Bot API Token from @BotFather")
     bot_username: str = Field(default="anonymous_bot", description="Bot username without @")
-    admin_ids: List[int] = Field(default_factory=list, description="List of Telegram User IDs for system administrators")
+    admin_ids: Union[List[int], str] = Field(default_factory=list, description="List of Telegram User IDs for system administrators")
 
     # Database
     database_url: str = Field(

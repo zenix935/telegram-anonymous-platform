@@ -26,7 +26,8 @@ class DatabaseMiddleware(BaseMiddleware):
             data["db_session"] = session
 
             # Extract Telegram user
-            from_user = getattr(event, "from_user", None)
+            event_obj = getattr(event, "event", event)
+            from_user = getattr(event, "from_user", None) or getattr(event_obj, "from_user", None)
             if from_user and not from_user.is_bot:
                 user_repo = UserRepository(session)
                 is_admin = from_user.id in settings.admin_ids
@@ -40,10 +41,11 @@ class DatabaseMiddleware(BaseMiddleware):
 
                 # Reject globally banned users
                 if db_user.is_globally_banned:
-                    if isinstance(event, Message):
-                        await event.answer("⛔ حساب شما در این ربات مسدود شده است.")
-                    elif isinstance(event, CallbackQuery):
-                        await event.answer("⛔ حساب شما در این ربات مسدود شده است.", show_alert=True)
+                    target = event if isinstance(event, (Message, CallbackQuery)) else event_obj
+                    if isinstance(target, Message):
+                        await target.answer("⛔ حساب شما در این ربات مسدود شده است.")
+                    elif isinstance(target, CallbackQuery):
+                        await target.answer("⛔ حساب شما در این ربات مسدود شده است.", show_alert=True)
                     return
 
             try:
