@@ -232,11 +232,7 @@ async def handle_reply_to_specific_message(
     await state.update_data(active_conv_id=str(conv.id))
 
     await call.message.reply(
-        get_text(
-            "reply_mode_activated",
-            sender_alias=target_alias,
-            reply_target=f"msg_{delivered_tg_msg_id}",
-        ),
+        get_text("reply_mode_activated"),
         reply_markup=get_cancel_inline_keyboard(),
         parse_mode="HTML",
     )
@@ -273,7 +269,7 @@ async def handle_reply_from_conv_view(
     await state.update_data(active_conv_id=str(conv.id))
 
     await call.message.reply(
-        get_text("reply_mode_activated", sender_alias=conv.sender_alias, reply_target=f"conv_{str(conv.id)[:8]}"),
+        get_text("reply_mode_activated"),
         reply_markup=get_cancel_inline_keyboard(),
         parse_mode="HTML",
     )
@@ -381,6 +377,76 @@ async def handle_owner_sending_reply(
 
 
 # --- 4. CONVERSATION MANAGEMENT: Close, Block, Report ---
+
+
+@router.callback_query(F.data.startswith("conv:rename:"))
+async def handle_rename_conversation_prompt(
+    call: types.CallbackQuery, db_session: AsyncSession, db_user: User, state: FSMContext
+):
+    """Prompt owner to set a custom private alias for this conversation."""
+    conv_id_str = call.data.split(":")[2]
+    conv_repo = ConversationRepository(db_session)
+    conv = await conv_repo.get_by_id(uuid.UUID(conv_id_str))
+
+    if not conv or conv.owner_id != db_user.id:
+        await call.answer("گفت‌وگو یافت نشد.", show_alert=True)
+        return
+
+    await state.set_state(PersonalChatStates.setting_conversation_alias)
+    await state.update_data(renaming_conv_id=conv_id_str)
+
+    await call.message.answer(
+        f"✏️ <b>تغییر نام مخاطب برای شما:</b>\n\nنام فعلی: <b>{conv.sender_alias}</b>\n\nلطفاً نام دلخواه جدید را ارسال کنید (این نام فقط برای شما در صندوق پیام‌ها نمایش داده می‌شود):",
+        reply_markup=get_cancel_inline_keyboard(),
+        parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.message(PersonalChatStates.setting_conversation_alias, F.text)
+async def handle_submit_conversation_alias(
+    message: types.Message, db_session: AsyncSession, db_user: User, state: FSMContext
+):
+    """Save custom alias for the conversation."""
+    new_alias = message.text.strip()
+    if len(new_alias) > 50:
+        await message.answer("❌ نام انتخابی نباید بیشتر از ۵۰ کاراکتر باشد. لطفاً نام کوتاه تری ارسال کنید:")
+        return
+
+    data = await state.get_data()
+    conv_id_str = data.get("renaming_conv_id")
+
+    if conv_id_str:
+        conv_repo = ConversationRepository(db_session)
+        conv = await conv_repo.get_by_id(uuid.UUID(conv_id_str))
+        if conv and conv.owner_id == db_user.id:
+            await conv_repo.update_alias(conv.id, new_alias)
+            await state.clear()
+
+            status_str = (
+                "🟢 در حال گفت‌وگو"
+                if conv.status == ConversationStatus.ACTIVE
+                else "⚪ بسته شده"
+            )
+            text = get_text(
+                "conversation_view_title",
+                sender_alias=new_alias,
+                status=status_str,
+                created_at=conv.created_at.strftime("%Y-%m-%d %H:%M"),
+                last_message_at=conv.last_message_at.strftime("%Y-%m-%d %H:%M"),
+            )
+            kb = get_conversation_action_inline_keyboard(
+                conv_id=str(conv.id), is_active=(conv.status == ConversationStatus.ACTIVE)
+            )
+            await message.answer(
+                f"✅ نام مخاطب با موفقیت به «<b>{new_alias}</b>» تغییر یافت.",
+                parse_mode="HTML",
+            )
+            await message.answer(text, reply_markup=kb, parse_mode="HTML")
+            return
+
+    await state.clear()
+    await message.answer("❌ خطا در ویرایش نام گفت‌وگو.")
 
 
 @router.callback_query(F.data.startswith("conv:close:"))

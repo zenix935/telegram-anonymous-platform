@@ -357,6 +357,15 @@ class ConversationRepository:
         await self.session.flush()
         return conv
 
+    async def update_alias(self, conversation_id: uuid.UUID, new_alias: str) -> bool:
+        stmt = (
+            update(Conversation)
+            .where(Conversation.id == conversation_id)
+            .values(sender_alias=new_alias, updated_at=utcnow())
+        )
+        result = await self.session.execute(stmt)
+        return result.rowcount > 0
+
     async def get_owner_inbox(
         self, owner_id: uuid.UUID, limit: int = 20, offset: int = 0
     ) -> Tuple[List[Conversation], int]:

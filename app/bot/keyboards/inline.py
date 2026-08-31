@@ -22,13 +22,10 @@ def get_main_menu_inline_keyboard(is_admin: bool = False) -> InlineKeyboardMarku
                 text=get_text("btn_channels"), callback_data="nav:channels"
             ),
             InlineKeyboardButton(
-                text=get_text("btn_nickname"), callback_data="nav:nickname"
+                text=get_text("btn_settings"), callback_data="nav:settings"
             ),
         ],
         [
-            InlineKeyboardButton(
-                text=get_text("btn_settings"), callback_data="nav:settings"
-            ),
             InlineKeyboardButton(
                 text=get_text("btn_help"), callback_data="nav:help"
             ),
@@ -207,6 +204,15 @@ def get_conversation_action_inline_keyboard(
                 ),
             ]
         )
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                text="✏️ تغییر نام مخاطب",
+                callback_data=f"conv:rename:{conv_id}",
+            ),
+        ]
+    )
+    if is_active:
         buttons.append(
             [
                 InlineKeyboardButton(

@@ -10,6 +10,7 @@ class PersonalChatStates(StatesGroup):
     replying_to_message = State()
     setting_custom_slug = State()
     setting_nickname = State()
+    setting_conversation_alias = State()
     reporting_reason = State()
 
 

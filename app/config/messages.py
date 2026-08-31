@@ -81,9 +81,8 @@ MESSAGES: Dict[str, Dict[str, str]] = {
         # Personal Anonymous Chat (Owner side / Inbox)
         "incoming_anonymous_message_header": "📩 <b>پیام ناشناس جدید</b>",
         "reply_mode_activated": (
-            "↩️ <b>حالت پاسخ به {sender_alias} فعال شد.</b>\n\n"
-            "پیام بعدی شما مستقیماً و منحصراً به همین گفت‌وگو ارسال خواهد شد.\n"
-            "🎯 شناسه پاسخ: <code>{reply_target}</code>"
+            "↩️ <b>حالت پاسخ فعال شد</b>\n\n"
+            "پیام بعدی شما برای کاربر ارسال می‌شود."
         ),
         "reply_mode_cancelled": "❌ حالت پاسخ لغو شد.",
         "reply_sent_success": "✅ پاسخ شما با موفقیت برای مخاطب ناشناس ارسال شد.",
