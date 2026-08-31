@@ -421,6 +421,15 @@ class ConversationRepository:
         result = await self.session.execute(query)
         return result.scalar_one_or_none()
 
+    async def mark_message_as_seen(self, message_id: uuid.UUID) -> bool:
+        stmt = (
+            update(ConversationMessage)
+            .where(ConversationMessage.id == message_id)
+            .values(is_seen=True)
+        )
+        result = await self.session.execute(stmt)
+        return result.rowcount > 0
+
     async def set_status(
         self, conversation_id: uuid.UUID, status: ConversationStatus
     ) -> bool:
@@ -632,6 +641,10 @@ class SeenRepository:
         return True, row[0], row[1]
 
     async def count_total_seen(self) -> int:
-        query = select(func.count(SeenEvent.id))
-        result = await self.session.execute(query)
-        return result.scalar() or 0
+        channel_seen_query = select(func.count(SeenEvent.id))
+        channel_seen = (await self.session.execute(channel_seen_query)).scalar() or 0
+
+        conv_seen_query = select(func.count(ConversationMessage.id)).where(ConversationMessage.is_seen == True)
+        conv_seen = (await self.session.execute(conv_seen_query)).scalar() or 0
+
+        return channel_seen + conv_seen

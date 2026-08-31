@@ -86,11 +86,10 @@ class AnonymousChatService:
         # Send to owner via Bot API
         delivered_msg = None
         header = get_text("incoming_anonymous_message_header")
-        footer = get_text("incoming_anonymous_message_footer")
 
         try:
             if content_type == "text":
-                formatted_text = f"{header}\n\n{text_content}\n\n{footer}"
+                formatted_text = f"{header}\n\n{text_content}"
                 delivered_msg = await self.bot.send_message(
                     chat_id=owner.telegram_id,
                     text=formatted_text,
@@ -98,7 +97,7 @@ class AnonymousChatService:
                 )
             elif content_type == "photo":
                 cap_body = f"\n\n{caption}" if caption else ""
-                cap = f"{header}{cap_body}\n\n{footer}".strip()
+                cap = f"{header}{cap_body}".strip()
                 delivered_msg = await self.bot.send_photo(
                     chat_id=owner.telegram_id,
                     photo=media_file_id,
@@ -109,12 +108,12 @@ class AnonymousChatService:
                 delivered_msg = await self.bot.send_voice(
                     chat_id=owner.telegram_id,
                     voice=media_file_id,
-                    caption=f"{header}\n\n{footer}",
+                    caption=header,
                     parse_mode="HTML",
                 )
             elif content_type == "video":
                 cap_body = f"\n\n{caption}" if caption else ""
-                cap = f"{header}{cap_body}\n\n{footer}".strip()
+                cap = f"{header}{cap_body}".strip()
                 delivered_msg = await self.bot.send_video(
                     chat_id=owner.telegram_id,
                     video=media_file_id,
@@ -123,7 +122,7 @@ class AnonymousChatService:
                 )
             elif content_type == "document":
                 cap_body = f"\n\n{caption}" if caption else ""
-                cap = f"{header}{cap_body}\n\n{footer}".strip()
+                cap = f"{header}{cap_body}".strip()
                 delivered_msg = await self.bot.send_document(
                     chat_id=owner.telegram_id,
                     document=media_file_id,
@@ -132,7 +131,7 @@ class AnonymousChatService:
                 )
             elif content_type == "audio":
                 cap_body = f"\n\n{caption}" if caption else ""
-                cap = f"{header}{cap_body}\n\n{footer}".strip()
+                cap = f"{header}{cap_body}".strip()
                 delivered_msg = await self.bot.send_audio(
                     chat_id=owner.telegram_id,
                     audio=media_file_id,
@@ -141,7 +140,7 @@ class AnonymousChatService:
                 )
             elif content_type == "animation":
                 cap_body = f"\n\n{caption}" if caption else ""
-                cap = f"{header}{cap_body}\n\n{footer}".strip()
+                cap = f"{header}{cap_body}".strip()
                 delivered_msg = await self.bot.send_animation(
                     chat_id=owner.telegram_id,
                     animation=media_file_id,
@@ -151,7 +150,7 @@ class AnonymousChatService:
             elif content_type == "sticker":
                 await self.bot.send_message(
                     chat_id=owner.telegram_id,
-                    text=f"{header}\n\n{footer}",
+                    text=header,
                     parse_mode="HTML",
                 )
                 delivered_msg = await self.bot.send_sticker(

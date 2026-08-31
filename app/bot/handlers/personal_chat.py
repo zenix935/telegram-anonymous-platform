@@ -410,7 +410,7 @@ async def handle_close_conversation(
 async def handle_conversation_seen(
     call: types.CallbackQuery, db_session: AsyncSession, db_user: User, bot: Bot
 ):
-    """Notify the sender that their message was seen by the recipient."""
+    """Notify the sender that their message was seen by the recipient and remove the button."""
     parts = call.data.split(":")
     if len(parts) < 4:
         await call.answer()
@@ -431,9 +431,17 @@ async def handle_conversation_seen(
         await call.answer("پیام یافت نشد.", show_alert=True)
         return
 
+    if msg_obj.is_seen:
+        await call.answer("شما قبلاً وضعیت مشاهده این پیام را ارسال کرده‌اید.", show_alert=False)
+        return
+
+    # Mark message as seen in database
+    await conv_repo.mark_message_as_seen(msg_obj.id)
+
     # Target user to notify is the other participant
     target_tg_id = None
-    if db_user.id == conv.owner_id:
+    is_owner = (db_user.id == conv.owner_id)
+    if is_owner:
         target_tg_id = conv.sender.telegram_id
     else:
         target_tg_id = conv.owner.telegram_id
@@ -453,6 +461,20 @@ async def handle_conversation_seen(
             await call.answer("خطا در ارسال وضعیت مشاهده.", show_alert=True)
     else:
         await call.answer()
+
+    # Update inline keyboard to remove the seen button
+    try:
+        from app.bot.keyboards.inline import (
+            get_reply_to_message_inline_keyboard,
+            get_sender_reply_inline_keyboard,
+        )
+        if is_owner:
+            new_kb = get_reply_to_message_inline_keyboard(delivered_tg_msg_id, conv_id_str, is_seen=True)
+        else:
+            new_kb = get_sender_reply_inline_keyboard(delivered_tg_msg_id, conv_id_str, is_seen=True)
+        await call.message.edit_reply_markup(reply_markup=new_kb)
+    except Exception:
+        pass
 
 
 @router.callback_query(F.data.startswith("conv:block:"))

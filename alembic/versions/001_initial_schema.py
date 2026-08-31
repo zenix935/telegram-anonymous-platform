@@ -130,6 +130,7 @@ def upgrade() -> None:
         sa.Column('text_content', sa.Text(), nullable=True),
         sa.Column('media_file_id', sa.String(length=255), nullable=True),
         sa.Column('caption', sa.Text(), nullable=True),
+        sa.Column('is_seen', sa.Boolean(), nullable=False, server_default='false'),
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     )
     op.create_index('ix_conv_msg_conv_id', 'conversation_messages', ['conversation_id'])

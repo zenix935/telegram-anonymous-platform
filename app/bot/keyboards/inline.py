@@ -82,24 +82,29 @@ def get_personal_link_management_keyboard(is_active: bool, has_slug: bool) -> In
 
 
 def get_reply_to_message_inline_keyboard(
-    delivered_tg_msg_id: int, conv_id: str
+    delivered_tg_msg_id: int, conv_id: str, is_seen: bool = False
 ) -> InlineKeyboardMarkup:
     """
     Direct Reply & Seen buttons attached to incoming anonymous message.
     Preserves exact message-level reply target.
     """
+    first_row = [
+        InlineKeyboardButton(
+            text=get_text("btn_reply_msg"),
+            callback_data=f"reply:msg:{delivered_tg_msg_id}:{conv_id}",
+        ),
+    ]
+    if not is_seen:
+        first_row.append(
+            InlineKeyboardButton(
+                text="👁 پیام را دیدم",
+                callback_data=f"conv:seen:{delivered_tg_msg_id}:{conv_id}",
+            )
+        )
+
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=get_text("btn_reply_msg"),
-                    callback_data=f"reply:msg:{delivered_tg_msg_id}:{conv_id}",
-                ),
-                InlineKeyboardButton(
-                    text="👁 پیام را دیدم",
-                    callback_data=f"conv:seen:{delivered_tg_msg_id}:{conv_id}",
-                ),
-            ],
+            first_row,
             [
                 InlineKeyboardButton(
                     text=get_text("btn_block_user"),
@@ -115,24 +120,29 @@ def get_reply_to_message_inline_keyboard(
 
 
 def get_sender_reply_inline_keyboard(
-    delivered_tg_msg_id: int, conv_id: str
+    delivered_tg_msg_id: int, conv_id: str, is_seen: bool = False
 ) -> InlineKeyboardMarkup:
     """
     Direct Reply & Seen buttons attached to an answer message delivered to the sender.
     Allows sender to continue the conversation thread.
     """
+    first_row = [
+        InlineKeyboardButton(
+            text=get_text("btn_reply_msg"),
+            callback_data=f"reply:msg:{delivered_tg_msg_id}:{conv_id}",
+        ),
+    ]
+    if not is_seen:
+        first_row.append(
+            InlineKeyboardButton(
+                text="👁 پیام را دیدم",
+                callback_data=f"conv:seen:{delivered_tg_msg_id}:{conv_id}",
+            )
+        )
+
     return InlineKeyboardMarkup(
         inline_keyboard=[
-            [
-                InlineKeyboardButton(
-                    text=get_text("btn_reply_msg"),
-                    callback_data=f"reply:msg:{delivered_tg_msg_id}:{conv_id}",
-                ),
-                InlineKeyboardButton(
-                    text="👁 پیام را دیدم",
-                    callback_data=f"conv:seen:{delivered_tg_msg_id}:{conv_id}",
-                ),
-            ],
+            first_row,
             [
                 InlineKeyboardButton(
                     text=get_text("btn_report_user"),

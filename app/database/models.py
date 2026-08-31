@@ -347,6 +347,7 @@ class ConversationMessage(Base):
     text_content: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     media_file_id: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
     caption: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
+    is_seen: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), default=utcnow, nullable=False, index=True
     )
