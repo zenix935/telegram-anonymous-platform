@@ -486,6 +486,7 @@ class Report(Base):
         ForeignKey("users.id", ondelete="CASCADE"),
         nullable=False,
     )
+    reported_message_text: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     reason: Mapped[str] = mapped_column(Text, nullable=False)
     status: Mapped[ReportStatus] = mapped_column(
         Enum(ReportStatus, name="report_status_enum", create_type=False),

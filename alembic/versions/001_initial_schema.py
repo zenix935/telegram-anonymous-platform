@@ -179,6 +179,7 @@ def upgrade() -> None:
         sa.Column('reporter_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False),
         sa.Column('conversation_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('conversations.id', ondelete='SET NULL'), nullable=True),
         sa.Column('reported_user_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('users.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('reported_message_text', sa.Text(), nullable=True),
         sa.Column('reason', sa.Text(), nullable=False),
         sa.Column('status', sa.String(length=32), nullable=False, server_default='PENDING'),
         sa.Column('moderator_notes', sa.Text(), nullable=True),

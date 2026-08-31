@@ -85,7 +85,7 @@ def get_reply_to_message_inline_keyboard(
     delivered_tg_msg_id: int, conv_id: str
 ) -> InlineKeyboardMarkup:
     """
-    Direct Reply button attached to incoming anonymous message.
+    Direct Reply & Seen buttons attached to incoming anonymous message.
     Preserves exact message-level reply target.
     """
     return InlineKeyboardMarkup(
@@ -96,14 +96,18 @@ def get_reply_to_message_inline_keyboard(
                     callback_data=f"reply:msg:{delivered_tg_msg_id}:{conv_id}",
                 ),
                 InlineKeyboardButton(
-                    text=get_text("btn_block_user"),
-                    callback_data=f"conv:block:{conv_id}",
+                    text="👁 پیام را دیدم",
+                    callback_data=f"conv:seen:{delivered_tg_msg_id}:{conv_id}",
                 ),
             ],
             [
                 InlineKeyboardButton(
+                    text=get_text("btn_block_user"),
+                    callback_data=f"conv:block:{conv_id}",
+                ),
+                InlineKeyboardButton(
                     text=get_text("btn_report_user"),
-                    callback_data=f"conv:report:{conv_id}",
+                    callback_data=f"conv:report:{delivered_tg_msg_id}:{conv_id}",
                 ),
             ],
         ]
@@ -114,7 +118,7 @@ def get_sender_reply_inline_keyboard(
     delivered_tg_msg_id: int, conv_id: str
 ) -> InlineKeyboardMarkup:
     """
-    Direct Reply button attached to an answer message delivered to the sender.
+    Direct Reply & Seen buttons attached to an answer message delivered to the sender.
     Allows sender to continue the conversation thread.
     """
     return InlineKeyboardMarkup(
@@ -124,7 +128,17 @@ def get_sender_reply_inline_keyboard(
                     text=get_text("btn_reply_msg"),
                     callback_data=f"reply:msg:{delivered_tg_msg_id}:{conv_id}",
                 ),
-            ]
+                InlineKeyboardButton(
+                    text="👁 پیام را دیدم",
+                    callback_data=f"conv:seen:{delivered_tg_msg_id}:{conv_id}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    text=get_text("btn_report_user"),
+                    callback_data=f"conv:report:{delivered_tg_msg_id}:{conv_id}",
+                ),
+            ],
         ]
     )
 

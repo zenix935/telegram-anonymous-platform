@@ -488,12 +488,14 @@ class ModerationRepository:
         reported_user_id: uuid.UUID,
         reason: str,
         conversation_id: Optional[uuid.UUID] = None,
+        reported_message_text: Optional[str] = None,
     ) -> Report:
         report = Report(
             reporter_id=reporter_id,
             reported_user_id=reported_user_id,
             reason=reason,
             conversation_id=conversation_id,
+            reported_message_text=reported_message_text,
             status=ReportStatus.PENDING,
         )
         self.session.add(report)

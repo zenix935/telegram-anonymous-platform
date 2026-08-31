@@ -88,11 +88,13 @@ async def handle_admin_reports_list(
     for idx, r in enumerate(reports, 1):
         reporter_label = generate_opaque_user_id(str(r.reporter_id))
         reported_label = generate_opaque_user_id(str(r.reported_user_id))
+        msg_detail = f"💬 پیام: <blockquote>{r.reported_message_text}</blockquote>\n" if r.reported_message_text else ""
         text_lines.append(
             f"<b>{idx}. گزارش #{str(r.id)[:6]}</b>\n"
             f"👤 شاکی: <code>{reporter_label}</code>\n"
             f"🚫 متخلف: <code>{reported_label}</code>\n"
             f"📝 دلیل: {r.reason}\n"
+            f"{msg_detail}"
             f"🕒 تاریخ: <code>{r.created_at.strftime('%Y-%m-%d %H:%M')}</code>\n"
         )
         buttons.append([

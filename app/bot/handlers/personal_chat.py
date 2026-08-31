@@ -6,6 +6,7 @@ from aiogram.fsm.context import FSMContext
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.messages import get_text
+from app.config.settings import settings
 from app.database.models import ConversationStatus, User
 from app.database.repositories import (
     ConversationRepository,
@@ -405,6 +406,55 @@ async def handle_close_conversation(
     await call.answer()
 
 
+@router.callback_query(F.data.startswith("conv:seen:"))
+async def handle_conversation_seen(
+    call: types.CallbackQuery, db_session: AsyncSession, db_user: User, bot: Bot
+):
+    """Notify the sender that their message was seen by the recipient."""
+    parts = call.data.split(":")
+    if len(parts) < 4:
+        await call.answer()
+        return
+
+    delivered_tg_msg_id = int(parts[2])
+    conv_id_str = parts[3]
+
+    conv_repo = ConversationRepository(db_session)
+    conv = await conv_repo.get_by_id(uuid.UUID(conv_id_str))
+
+    if not conv or (conv.owner_id != db_user.id and conv.sender_id != db_user.id):
+        await call.answer("گفت‌وگو یافت نشد.", show_alert=True)
+        return
+
+    msg_obj = await conv_repo.get_message_by_recipient_tg_id(delivered_tg_msg_id)
+    if not msg_obj:
+        await call.answer("پیام یافت نشد.", show_alert=True)
+        return
+
+    # Target user to notify is the other participant
+    target_tg_id = None
+    if db_user.id == conv.owner_id:
+        target_tg_id = conv.sender.telegram_id
+    else:
+        target_tg_id = conv.owner.telegram_id
+
+    reply_to_id = msg_obj.sender_telegram_message_id
+
+    if target_tg_id:
+        try:
+            await bot.send_message(
+                chat_id=target_tg_id,
+                text="👁 <b>کاربر پیام شما را مشاهده کرد</b>",
+                reply_to_message_id=reply_to_id,
+                parse_mode="HTML",
+            )
+            await call.answer("وضعیت مشاهده به فرستنده اعلام شد.", show_alert=False)
+        except Exception:
+            await call.answer("خطا در ارسال وضعیت مشاهده.", show_alert=True)
+    else:
+        await call.answer()
+
+
 @router.callback_query(F.data.startswith("conv:block:"))
 async def handle_block_conversation_user(
     call: types.CallbackQuery, db_session: AsyncSession, db_user: User
@@ -427,12 +477,35 @@ async def handle_block_conversation_user(
 
 
 @router.callback_query(F.data.startswith("conv:report:"))
-async def handle_report_prompt(call: types.CallbackQuery, state: FSMContext):
-    """Prompt for report reason."""
-    conv_id_str = call.data.split(":")[2]
+async def handle_report_prompt(call: types.CallbackQuery, state: FSMContext, db_session: AsyncSession):
+    """Prompt for report reason in a new message without modifying the original message."""
+    parts = call.data.split(":")
+    if len(parts) >= 4:
+        reported_msg_id = int(parts[2])
+        conv_id_str = parts[3]
+    else:
+        reported_msg_id = 0
+        conv_id_str = parts[2]
+
+    # Extract the text/caption of the reported message
+    reported_content = None
+    if reported_msg_id > 0:
+        conv_repo = ConversationRepository(db_session)
+        msg_obj = await conv_repo.get_message_by_recipient_tg_id(reported_msg_id)
+        if msg_obj:
+            reported_content = msg_obj.text_content or msg_obj.caption or f"[{msg_obj.content_type}]"
+    if not reported_content and call.message:
+        reported_content = call.message.text or call.message.caption or ""
+
     await state.set_state(PersonalChatStates.reporting_reason)
-    await state.update_data(reporting_conv_id=conv_id_str)
-    await call.message.edit_text(
+    await state.update_data(
+        reporting_conv_id=conv_id_str,
+        reported_msg_id=reported_msg_id,
+        reported_text=reported_content,
+    )
+
+    # Send a NEW message instead of editing the existing one
+    await call.message.answer(
         get_text("report_prompt"), reply_markup=get_cancel_inline_keyboard()
     )
     await call.answer()
@@ -440,12 +513,13 @@ async def handle_report_prompt(call: types.CallbackQuery, state: FSMContext):
 
 @router.message(PersonalChatStates.reporting_reason, F.text)
 async def handle_submit_report(
-    message: types.Message, db_session: AsyncSession, db_user: User, state: FSMContext
+    message: types.Message, db_session: AsyncSession, db_user: User, state: FSMContext, bot: Bot
 ):
-    """Persist abuse report."""
+    """Persist abuse report and notify administrators."""
     reason = message.text.strip()
     data = await state.get_data()
     conv_id_str = data.get("reporting_conv_id")
+    reported_text = data.get("reported_text")
 
     if conv_id_str:
         conv_repo = ConversationRepository(db_session)
@@ -453,12 +527,45 @@ async def handle_submit_report(
         if conv:
             reported_user_id = conv.sender_id if conv.owner_id == db_user.id else conv.owner_id
             mod_repo = ModerationRepository(db_session)
-            await mod_repo.create_report(
+            report = await mod_repo.create_report(
                 reporter_id=db_user.id,
                 reported_user_id=reported_user_id,
                 reason=reason,
                 conversation_id=conv.id,
+                reported_message_text=reported_text,
             )
+
+            # Proactively notify all admins about the new report
+            from app.security.tokens import generate_opaque_user_id
+            reporter_label = generate_opaque_user_id(str(db_user.id))
+            reported_label = generate_opaque_user_id(str(reported_user_id))
+            admin_notif_text = (
+                f"🚨 <b>گزارش تخلف جدید #{str(report.id)[:6]}</b>\n\n"
+                f"👤 شاکی: <code>{reporter_label}</code>\n"
+                f"🚫 متخلف: <code>{reported_label}</code>\n"
+                f"📝 دلیل: <b>{reason}</b>\n"
+            )
+            if reported_text:
+                admin_notif_text += f"💬 متن پیام گزارش‌شده:\n<blockquote>{reported_text}</blockquote>\n"
+
+            admin_kb = types.InlineKeyboardMarkup(
+                inline_keyboard=[
+                    [
+                        types.InlineKeyboardButton(text="🚫 مسدودسازی متخلف", callback_data=f"admin:ban_report:{report.id}"),
+                        types.InlineKeyboardButton(text="✅ رد گزارش", callback_data=f"admin:dismiss_report:{report.id}"),
+                    ]
+                ]
+            )
+            for admin_tg_id in settings.admin_ids:
+                try:
+                    await bot.send_message(
+                        chat_id=admin_tg_id,
+                        text=admin_notif_text,
+                        reply_markup=admin_kb,
+                        parse_mode="HTML",
+                    )
+                except Exception:
+                    pass
 
     await state.clear()
     await message.answer(
