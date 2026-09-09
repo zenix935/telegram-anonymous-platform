@@ -181,6 +181,9 @@ class Channel(Base):
     channel_link: Mapped[Optional["ChannelLink"]] = relationship(
         "ChannelLink", back_populates="channel", uselist=False, cascade="all, delete-orphan"
     )
+    inboxes: Mapped[List["ChannelInbox"]] = relationship(
+        "ChannelInbox", back_populates="channel", cascade="all, delete-orphan"
+    )
     admins: Mapped[List["ChannelAdmin"]] = relationship(
         "ChannelAdmin", back_populates="channel", cascade="all, delete-orphan"
     )
@@ -252,6 +255,38 @@ class ChannelLink(Base):
     )
 
     channel: Mapped["Channel"] = relationship("Channel", back_populates="channel_link")
+
+
+class ChannelInbox(Base):
+    """
+    Sub-inbox attached to a channel.
+    Routes incoming anonymous messages to a designated personal link instead of publishing directly to the channel.
+    """
+
+    __tablename__ = "channel_inboxes"
+
+    id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), primary_key=True, default=uuid.uuid4
+    )
+    channel_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("channels.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    name: Mapped[str] = mapped_column(String(100), nullable=False)
+    personal_link_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("personal_links.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, nullable=False
+    )
+
+    channel: Mapped["Channel"] = relationship("Channel", back_populates="inboxes")
+    personal_link: Mapped["PersonalLink"] = relationship("PersonalLink")
 
 
 class Conversation(Base):

@@ -362,6 +362,7 @@ async def handle_owner_sending_reply(
             media_file_id=media_file_id,
             caption=message.caption,
             sender_tg_msg_id=message.message_id,
+            reply_to_target_tg_msg_id=reply_target_msg_id,
         )
 
     if success:

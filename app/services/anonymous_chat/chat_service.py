@@ -72,6 +72,7 @@ class AnonymousChatService:
         media_file_id: Optional[str] = None,
         caption: Optional[str] = None,
         sender_tg_msg_id: Optional[int] = None,
+        reply_to_target_tg_msg_id: Optional[int] = None,
     ) -> Tuple[bool, Optional[ConversationMessage]]:
         """
         Deliver message from anonymous sender to the link owner.
@@ -82,6 +83,13 @@ class AnonymousChatService:
             return False, None
 
         from app.bot.keyboards.inline import get_reply_to_message_inline_keyboard
+
+        # Resolve owner's original message ID in owner's chat to quote
+        owner_reply_id = None
+        if reply_to_target_tg_msg_id and reply_to_target_tg_msg_id > 0:
+            target_msg = await self.conv_repo.get_message_by_recipient_tg_id(reply_to_target_tg_msg_id)
+            if target_msg and target_msg.sender_telegram_message_id:
+                owner_reply_id = target_msg.sender_telegram_message_id
 
         # Send to owner via Bot API
         delivered_msg = None
@@ -94,6 +102,7 @@ class AnonymousChatService:
                     chat_id=owner.telegram_id,
                     text=formatted_text,
                     parse_mode="HTML",
+                    reply_to_message_id=owner_reply_id,
                 )
             elif content_type == "photo":
                 cap_body = f"\n\n{caption}" if caption else ""
@@ -103,6 +112,7 @@ class AnonymousChatService:
                     photo=media_file_id,
                     caption=cap,
                     parse_mode="HTML",
+                    reply_to_message_id=owner_reply_id,
                 )
             elif content_type == "voice":
                 delivered_msg = await self.bot.send_voice(
@@ -110,6 +120,7 @@ class AnonymousChatService:
                     voice=media_file_id,
                     caption=header,
                     parse_mode="HTML",
+                    reply_to_message_id=owner_reply_id,
                 )
             elif content_type == "video":
                 cap_body = f"\n\n{caption}" if caption else ""
@@ -119,6 +130,7 @@ class AnonymousChatService:
                     video=media_file_id,
                     caption=cap,
                     parse_mode="HTML",
+                    reply_to_message_id=owner_reply_id,
                 )
             elif content_type == "document":
                 cap_body = f"\n\n{caption}" if caption else ""
@@ -128,6 +140,7 @@ class AnonymousChatService:
                     document=media_file_id,
                     caption=cap,
                     parse_mode="HTML",
+                    reply_to_message_id=owner_reply_id,
                 )
             elif content_type == "audio":
                 cap_body = f"\n\n{caption}" if caption else ""
@@ -137,6 +150,7 @@ class AnonymousChatService:
                     audio=media_file_id,
                     caption=cap,
                     parse_mode="HTML",
+                    reply_to_message_id=owner_reply_id,
                 )
             elif content_type == "animation":
                 cap_body = f"\n\n{caption}" if caption else ""
@@ -146,12 +160,14 @@ class AnonymousChatService:
                     animation=media_file_id,
                     caption=cap,
                     parse_mode="HTML",
+                    reply_to_message_id=owner_reply_id,
                 )
             elif content_type == "sticker":
                 await self.bot.send_message(
                     chat_id=owner.telegram_id,
                     text=header,
                     parse_mode="HTML",
+                    reply_to_message_id=owner_reply_id,
                 )
                 delivered_msg = await self.bot.send_sticker(
                     chat_id=owner.telegram_id,

@@ -199,8 +199,21 @@ def upgrade() -> None:
         sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
     )
 
+    # Channel Inboxes
+    op.create_table(
+        'channel_inboxes',
+        sa.Column('id', postgresql.UUID(as_uuid=True), primary_key=True),
+        sa.Column('channel_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('channels.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('name', sa.String(length=100), nullable=False),
+        sa.Column('personal_link_id', postgresql.UUID(as_uuid=True), sa.ForeignKey('personal_links.id', ondelete='CASCADE'), nullable=False),
+        sa.Column('created_at', sa.DateTime(timezone=True), nullable=False),
+    )
+    op.create_index('ix_channel_inboxes_channel_id', 'channel_inboxes', ['channel_id'])
+    op.create_index('ix_channel_inboxes_personal_link_id', 'channel_inboxes', ['personal_link_id'])
+
 
 def downgrade() -> None:
+    op.drop_table('channel_inboxes')
     op.drop_table('content_filters')
     op.drop_table('reports')
     op.drop_table('blocks')

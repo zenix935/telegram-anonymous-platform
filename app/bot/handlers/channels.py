@@ -1,14 +1,19 @@
 """Handlers for anonymous channel submission, Seen button clicks, and channel management."""
 
 import uuid
+from typing import Optional
 from aiogram import Router, types, F, Bot
 from aiogram.fsm.context import FSMContext
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.messages import get_text
+from app.config.settings import settings
 from app.database.models import User
 from app.database.repositories import (
     ChannelRepository,
+    ModerationRepository,
+    PersonalLinkRepository,
     UserRepository,
 )
 from app.bot.keyboards.inline import (
@@ -16,7 +21,7 @@ from app.bot.keyboards.inline import (
     get_main_menu_inline_keyboard,
     get_channel_management_keyboard,
 )
-from app.bot.states.fsm import ChannelPublishStates
+from app.bot.states.fsm import ChannelPublishStates, PersonalChatStates
 from app.security.tokens import generate_secure_token, validate_custom_slug
 from app.services.channel_publishing.publishing_service import ChannelPublishingService
 from app.services.channel_publishing.seen_service import SeenService
@@ -26,6 +31,22 @@ from app.services.moderation.rate_limiter import RateLimitService
 from app.utils.redis import get_redis_pool
 
 router = Router(name="channel_publishing_router")
+
+
+def extract_personal_token_or_slug(raw_text: str) -> Optional[str]:
+    """Extract token or slug from shared personal link or payload."""
+    raw = raw_text.strip()
+    if "start=" in raw:
+        payload = raw.split("start=")[-1].split("&")[0].split(" ")[0].strip()
+    elif raw.startswith("/start"):
+        parts = raw.split()
+        payload = parts[1].strip() if len(parts) > 1 else ""
+    else:
+        payload = raw
+
+    if payload.startswith("p_"):
+        return payload[2:]
+    return payload if payload else None
 
 
 # --- 1. CHANNEL SUBMISSION (ANONYMOUS AUTHOR) ---
@@ -325,9 +346,46 @@ async def handle_channel_connect_message(
     )
 
 
+async def render_channel_management_view(
+    channel, db_session: AsyncSession
+) -> tuple[str, InlineKeyboardMarkup]:
+    """Helper to render channel management text and keyboard."""
+    link_service = LinkService(db_session)
+    ident = channel.channel_link.custom_slug or channel.channel_link.random_token if channel.channel_link else ""
+    url = link_service.format_channel_url(ident)
+    status_text = get_text("link_status_active") if channel.is_active else get_text("link_status_disabled")
+
+    channel_repo = ChannelRepository(db_session)
+    inboxes = await channel_repo.get_channel_inboxes(channel.id)
+    inbox_info = ""
+    if inboxes:
+        inbox_info = "\n\n📥 <b>صندوق‌های متصل:</b>\n" + "\n".join([f"▫️ {ib.name}" for ib in inboxes])
+
+    text = (
+        get_text(
+            "channel_admin_title",
+            channel_title=channel.title,
+            link=url,
+            status=status_text,
+            template=channel.post_template,
+        )
+        + inbox_info
+    )
+    kb = get_channel_management_keyboard(
+        channel_id=str(channel.id),
+        is_active=channel.is_active,
+        has_slug=bool(channel.channel_link and channel.channel_link.custom_slug),
+        inboxes_count=len(inboxes),
+    )
+    return text, kb
+
+
 @router.callback_query(F.data.startswith("channel:view:"))
-async def handle_channel_view(call: types.CallbackQuery, db_session: AsyncSession, db_user: User):
+async def handle_channel_view(
+    call: types.CallbackQuery, db_session: AsyncSession, db_user: User, state: FSMContext
+):
     """View details and options of a managed channel."""
+    await state.clear()
     channel_id_str = call.data.split(":")[2]
     channel_id = uuid.UUID(channel_id_str)
     channel_repo = ChannelRepository(db_session)
@@ -342,23 +400,7 @@ async def handle_channel_view(call: types.CallbackQuery, db_session: AsyncSessio
         await call.answer(get_text("not_channel_admin"), show_alert=True)
         return
 
-    link_service = LinkService(db_session)
-    ident = channel.channel_link.custom_slug or channel.channel_link.random_token if channel.channel_link else ""
-    url = link_service.format_channel_url(ident)
-    status_text = get_text("link_status_active") if channel.is_active else get_text("link_status_disabled")
-
-    text = get_text(
-        "channel_admin_title",
-        channel_title=channel.title,
-        link=url,
-        status=status_text,
-        template=channel.post_template,
-    )
-    kb = get_channel_management_keyboard(
-        channel_id=str(channel.id),
-        is_active=channel.is_active,
-        has_slug=bool(channel.channel_link and channel.channel_link.custom_slug),
-    )
+    text, kb = await render_channel_management_view(channel, db_session)
     await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
     await call.answer()
 
@@ -381,23 +423,7 @@ async def handle_channel_toggle(call: types.CallbackQuery, db_session: AsyncSess
     status_label = get_text("link_status_active") if channel.is_active else get_text("link_status_disabled")
     await call.answer(get_text("link_status_changed", status=status_label))
 
-    # Re-render channel view
-    link_service = LinkService(db_session)
-    ident = channel.channel_link.custom_slug or channel.channel_link.random_token if channel.channel_link else ""
-    url = link_service.format_channel_url(ident)
-
-    text = get_text(
-        "channel_admin_title",
-        channel_title=channel.title,
-        link=url,
-        status=status_label,
-        template=channel.post_template,
-    )
-    kb = get_channel_management_keyboard(
-        channel_id=str(channel.id),
-        is_active=channel.is_active,
-        has_slug=bool(channel.channel_link and channel.channel_link.custom_slug),
-    )
+    text, kb = await render_channel_management_view(channel, db_session)
     await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
 
 
@@ -417,24 +443,7 @@ async def handle_channel_regen_token(call: types.CallbackQuery, db_session: Asyn
     await db_session.flush()
 
     await call.answer("توکن لینک کانال با موفقیت بازتولید شد.")
-
-    link_service = LinkService(db_session)
-    ident = channel.channel_link.custom_slug or channel.channel_link.random_token
-    url = link_service.format_channel_url(ident)
-    status_label = get_text("link_status_active") if channel.is_active else get_text("link_status_disabled")
-
-    text = get_text(
-        "channel_admin_title",
-        channel_title=channel.title,
-        link=url,
-        status=status_label,
-        template=channel.post_template,
-    )
-    kb = get_channel_management_keyboard(
-        channel_id=str(channel.id),
-        is_active=channel.is_active,
-        has_slug=bool(channel.channel_link.custom_slug),
-    )
+    text, kb = await render_channel_management_view(channel, db_session)
     await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
 
 
@@ -454,24 +463,7 @@ async def handle_channel_remove_slug(call: types.CallbackQuery, db_session: Asyn
     await db_session.flush()
 
     await call.answer("اسلاگ اختصاصی کانال حذف شد.")
-
-    link_service = LinkService(db_session)
-    ident = channel.channel_link.random_token
-    url = link_service.format_channel_url(ident)
-    status_label = get_text("link_status_active") if channel.is_active else get_text("link_status_disabled")
-
-    text = get_text(
-        "channel_admin_title",
-        channel_title=channel.title,
-        link=url,
-        status=status_label,
-        template=channel.post_template,
-    )
-    kb = get_channel_management_keyboard(
-        channel_id=str(channel.id),
-        is_active=channel.is_active,
-        has_slug=False,
-    )
+    text, kb = await render_channel_management_view(channel, db_session)
     await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
 
 
@@ -530,6 +522,313 @@ async def handle_channel_save_slug(
     )
 
 
-# Import InlineKeyboardButton for local keyboard creation
-from aiogram.types import InlineKeyboardButton
+# --- 4. CHANNEL SUB-INBOX MANAGEMENT & ROUTING ---
+
+
+@router.callback_query(F.data.startswith("ch_inbox:add:"))
+async def handle_add_channel_inbox_prompt(
+    call: types.CallbackQuery, db_session: AsyncSession, db_user: User, state: FSMContext
+):
+    """Prompt admin to add a sub-inbox to this channel."""
+    channel_id_str = call.data.split(":")[2]
+    channel_id = uuid.UUID(channel_id_str)
+    channel_repo = ChannelRepository(db_session)
+
+    is_admin = await channel_repo.is_user_channel_admin(channel_id, db_user.id)
+    if not is_admin:
+        await call.answer(get_text("not_channel_admin"), show_alert=True)
+        return
+
+    await state.set_state(ChannelPublishStates.waiting_for_inbox_name)
+    await state.update_data(target_channel_id=channel_id_str)
+
+    cancel_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=get_text("btn_cancel"), callback_data=f"channel:view:{channel_id_str}")]
+        ]
+    )
+    await call.message.edit_text(
+        "📥 <b>اضافه کردن صندوق جدید به کانال</b>\n\n"
+        "لطفاً یک <b>نام</b> برای این صندوق وارد کنید:\n"
+        "(مثال: <code>پشتیبانی</code>، <code>مدیر تبلیغات</code>، <code>ارتباط با ادمین</code>)",
+        reply_markup=cancel_kb,
+        parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.message(ChannelPublishStates.waiting_for_inbox_name, F.text)
+async def handle_save_inbox_name(message: types.Message, state: FSMContext):
+    """Save inbox name and prompt for personal link."""
+    name = message.text.strip()
+    if not name or len(name) > 60:
+        await message.answer("❌ نام صندوق باید بین ۱ تا ۶۰ کاراکتر باشد. لطفاً نام دیگری وارد کنید:")
+        return
+
+    data = await state.get_data()
+    channel_id_str = data.get("target_channel_id")
+    if not channel_id_str:
+        await state.clear()
+        await message.answer(get_text("generic_error"))
+        return
+
+    await state.update_data(inbox_name=name)
+    await state.set_state(ChannelPublishStates.waiting_for_inbox_link)
+
+    cancel_kb = InlineKeyboardMarkup(
+        inline_keyboard=[
+            [InlineKeyboardButton(text=get_text("btn_cancel"), callback_data=f"channel:view:{channel_id_str}")]
+        ]
+    )
+    await message.answer(
+        f"🔗 <b>لینک ناشناس متصل به صندوق «{name}»</b>\n\n"
+        "لطفاً لینک ناشناس شخص مورد نظر را ارسال کنید (لینکی که پیام‌ها به آن هدایت شوند):\n"
+        f"(مثال: <code>https://t.me/{settings.bot_username}?start=p_...</code>)",
+        reply_markup=cancel_kb,
+        parse_mode="HTML",
+    )
+
+
+@router.message(ChannelPublishStates.waiting_for_inbox_link, F.text)
+async def handle_save_inbox_link(
+    message: types.Message,
+    db_session: AsyncSession,
+    db_user: User,
+    state: FSMContext,
+):
+    """Validate personal link and attach inbox to channel."""
+    data = await state.get_data()
+    channel_id_str = data.get("target_channel_id")
+    inbox_name = data.get("inbox_name")
+
+    if not channel_id_str or not inbox_name:
+        await state.clear()
+        await message.answer(get_text("generic_error"))
+        return
+
+    channel_id = uuid.UUID(channel_id_str)
+    channel_repo = ChannelRepository(db_session)
+    channel = await channel_repo.get_by_id(channel_id)
+    if not channel:
+        await state.clear()
+        await message.answer("کانال یافت نشد.")
+        return
+
+    token = extract_personal_token_or_slug(message.text)
+    personal_link = None
+    if token:
+        personal_repo = PersonalLinkRepository(db_session)
+        personal_link = await personal_repo.get_by_token_or_slug(token)
+        if not personal_link and not token.startswith("p_"):
+            personal_link = await personal_repo.get_by_token_or_slug(f"p_{token}")
+
+    if not personal_link:
+        cancel_kb = InlineKeyboardMarkup(
+            inline_keyboard=[
+                [InlineKeyboardButton(text=get_text("btn_cancel"), callback_data=f"channel:view:{channel_id_str}")]
+            ]
+        )
+        await message.answer(
+            "❌ لینک ناشناس وارد شده نامعتبر است یا کاربری با این لینک یافت نشد.\n\n"
+            "لطفاً یک لینک معتبر ارسال کنید (یا دکمه انصراف را بزنید):",
+            reply_markup=cancel_kb,
+        )
+        return
+
+    await channel_repo.add_inbox(
+        channel_id=channel.id,
+        name=inbox_name,
+        personal_link_id=personal_link.id,
+    )
+    await state.clear()
+
+    text, kb = await render_channel_management_view(channel, db_session)
+    await message.answer(
+        f"✅ صندوق «<b>{inbox_name}</b>» با موفقیت به کانال «{channel.title}» متصل شد!\n\n"
+        "از این پس هنگام ارسال پیام به کانال، کاربران می‌توانند این صندوق را به عنوان مقصد انتخاب کنند.",
+        parse_mode="HTML",
+    )
+    await message.answer(text, reply_markup=kb, parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("ch_inbox:manage:"))
+async def handle_manage_channel_inboxes(
+    call: types.CallbackQuery, db_session: AsyncSession, db_user: User
+):
+    """View list of channel inboxes with delete options."""
+    channel_id_str = call.data.split(":")[2]
+    channel_id = uuid.UUID(channel_id_str)
+    channel_repo = ChannelRepository(db_session)
+    channel = await channel_repo.get_by_id(channel_id)
+
+    if not channel:
+        await call.answer("کانال یافت نشد.", show_alert=True)
+        return
+
+    is_admin = await channel_repo.is_user_channel_admin(channel.id, db_user.id)
+    if not is_admin:
+        await call.answer(get_text("not_channel_admin"), show_alert=True)
+        return
+
+    inboxes = await channel_repo.get_channel_inboxes(channel.id)
+    buttons = []
+    for ib in inboxes:
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text=f"🗑 حذف «{ib.name}»",
+                    callback_data=f"ch_inbox:del:{ib.id}",
+                )
+            ]
+        )
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                text="➕ اضافه کردن صندوق جدید",
+                callback_data=f"ch_inbox:add:{channel.id}",
+            )
+        ]
+    )
+    buttons.append(
+        [InlineKeyboardButton(text=get_text("btn_back"), callback_data=f"channel:view:{channel.id}")]
+    )
+
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+    text = (
+        f"📋 <b>مدیریت صندوق‌های متصل به کانال «{channel.title}»:</b>\n\n"
+        f"تعداد صندوق‌ها: {len(inboxes)}\n\n"
+        "برای حذف هر صندوق روی دکمه مربوطه کلیک کنید:"
+    )
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("ch_inbox:del:"))
+async def handle_delete_channel_inbox(
+    call: types.CallbackQuery, db_session: AsyncSession, db_user: User
+):
+    """Delete a sub-inbox from channel."""
+    parts = call.data.split(":")
+    inbox_id = uuid.UUID(parts[2])
+    channel_repo = ChannelRepository(db_session)
+
+    inbox = await channel_repo.get_inbox_by_id(inbox_id)
+    if not inbox:
+        await call.answer("صندوق یافت نشد.", show_alert=True)
+        return
+
+    channel_id = inbox.channel_id
+    is_admin = await channel_repo.is_user_channel_admin(channel_id, db_user.id)
+    if not is_admin:
+        await call.answer(get_text("not_channel_admin"), show_alert=True)
+        return
+
+    name = inbox.name
+    await channel_repo.delete_inbox(inbox_id)
+    await call.answer(f"✅ صندوق «{name}» حذف شد.", show_alert=False)
+
+    channel = await channel_repo.get_by_id(channel_id)
+    if not channel:
+        return
+
+    inboxes = await channel_repo.get_channel_inboxes(channel_id)
+    if not inboxes:
+        text, kb = await render_channel_management_view(channel, db_session)
+        await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+        return
+
+    buttons = []
+    for ib in inboxes:
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text=f"🗑 حذف «{ib.name}»",
+                    callback_data=f"ch_inbox:del:{ib.id}",
+                )
+            ]
+        )
+    buttons.append(
+        [
+            InlineKeyboardButton(
+                text="➕ اضافه کردن صندوق جدید",
+                callback_data=f"ch_inbox:add:{channel.id}",
+            )
+        ]
+    )
+    buttons.append(
+        [InlineKeyboardButton(text=get_text("btn_back"), callback_data=f"channel:view:{channel.id}")]
+    )
+    kb = InlineKeyboardMarkup(inline_keyboard=buttons)
+    text = (
+        f"📋 <b>مدیریت صندوق‌های متصل به کانال «{channel.title}»:</b>\n\n"
+        f"تعداد صندوق‌ها: {len(inboxes)}\n\n"
+        "برای حذف هر صندوق روی دکمه مربوطه کلیک کنید:"
+    )
+    await call.message.edit_text(text, reply_markup=kb, parse_mode="HTML")
+
+
+@router.callback_query(F.data.startswith("ch_dest:main:"))
+async def handle_select_main_channel_inbox(
+    call: types.CallbackQuery, db_session: AsyncSession, state: FSMContext
+):
+    """User selects main channel inbox to publish directly to channel."""
+    channel_id_str = call.data.split(":")[2]
+    channel_id = uuid.UUID(channel_id_str)
+    channel_repo = ChannelRepository(db_session)
+    channel = await channel_repo.get_by_id(channel_id)
+
+    if not channel or not channel.is_active:
+        await call.answer(get_text("channel_submission_disabled"), show_alert=True)
+        return
+
+    await state.set_state(ChannelPublishStates.waiting_for_channel_post)
+    await state.update_data(target_channel_id=str(channel.id))
+
+    await call.message.edit_text(
+        get_text("channel_submission_opened", channel_title=channel.title),
+        reply_markup=get_cancel_inline_keyboard(),
+        parse_mode="HTML",
+    )
+    await call.answer()
+
+
+@router.callback_query(F.data.startswith("ch_dest:inbox:"))
+async def handle_select_custom_channel_inbox(
+    call: types.CallbackQuery, db_session: AsyncSession, db_user: User, state: FSMContext
+):
+    """User selects custom channel inbox to message the associated personal link."""
+    inbox_id_str = call.data.split(":")[2]
+    channel_repo = ChannelRepository(db_session)
+    inbox = await channel_repo.get_inbox_by_id(uuid.UUID(inbox_id_str))
+
+    if not inbox or not inbox.personal_link:
+        await call.answer("صندوق مورد نظر یافت نشد.", show_alert=True)
+        return
+
+    personal_link = inbox.personal_link
+    if personal_link.owner_id == db_user.id:
+        await call.answer("❌ شما نمی‌توانید به صندوق خودتان پیام ناشناس بفرستید!", show_alert=True)
+        return
+
+    if not personal_link.is_active:
+        await call.answer("⚠️ این صندوق در حال حاضر غیرفعال است.", show_alert=True)
+        return
+
+    mod_repo = ModerationRepository(db_session)
+    if await mod_repo.is_blocked(blocker_id=personal_link.owner_id, blocked_id=db_user.id):
+        await call.answer("⛔ امکان ارسال پیام به این مقصد وجود ندارد.", show_alert=True)
+        return
+
+    await state.set_state(PersonalChatStates.waiting_for_message)
+    await state.update_data(
+        target_owner_id=str(personal_link.owner_id),
+        link_id=str(personal_link.id),
+    )
+
+    await call.message.edit_text(
+        get_text("sender_chat_opened", target_name=inbox.name),
+        reply_markup=get_cancel_inline_keyboard(),
+        parse_mode="HTML",
+    )
+    await call.answer()
 

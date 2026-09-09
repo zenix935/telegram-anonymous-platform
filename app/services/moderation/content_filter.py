@@ -37,10 +37,6 @@ class ContentFilterService:
         if len(cleaned_text) > settings.max_message_length:
             return False, "message_too_long"
 
-        # URL check if not explicitly allowed
-        if not allow_urls and URL_PATTERN.search(cleaned_text):
-            return False, "content_filtered_url"
-
         # Fetch active dynamic content filters
         filters = await self.repo.get_active_filters()
         for f in filters:

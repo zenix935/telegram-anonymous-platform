@@ -13,6 +13,7 @@ from app.database.models import (
     Block,
     Channel,
     ChannelAdmin,
+    ChannelInbox,
     ChannelLink,
     ChannelMessage,
     ContentFilter,
@@ -296,6 +297,47 @@ class ChannelRepository:
             .where(Channel.id == channel_id)
             .values(post_template=template, updated_at=utcnow())
         )
+        result = await self.session.execute(stmt)
+        return result.rowcount > 0
+
+    async def add_inbox(
+        self, channel_id: uuid.UUID, name: str, personal_link_id: uuid.UUID
+    ) -> ChannelInbox:
+        inbox = ChannelInbox(
+            channel_id=channel_id,
+            name=name,
+            personal_link_id=personal_link_id,
+        )
+        self.session.add(inbox)
+        await self.session.flush()
+        return inbox
+
+    async def get_channel_inboxes(self, channel_id: uuid.UUID) -> List[ChannelInbox]:
+        query = (
+            select(ChannelInbox)
+            .options(
+                selectinload(ChannelInbox.personal_link).selectinload(PersonalLink.owner)
+            )
+            .where(ChannelInbox.channel_id == channel_id)
+            .order_by(ChannelInbox.created_at.asc())
+        )
+        result = await self.session.execute(query)
+        return list(result.scalars().all())
+
+    async def get_inbox_by_id(self, inbox_id: uuid.UUID) -> Optional[ChannelInbox]:
+        query = (
+            select(ChannelInbox)
+            .options(
+                selectinload(ChannelInbox.personal_link).selectinload(PersonalLink.owner),
+                selectinload(ChannelInbox.channel),
+            )
+            .where(ChannelInbox.id == inbox_id)
+        )
+        result = await self.session.execute(query)
+        return result.scalar_one_or_none()
+
+    async def delete_inbox(self, inbox_id: uuid.UUID) -> bool:
+        stmt = delete(ChannelInbox).where(ChannelInbox.id == inbox_id)
         result = await self.session.execute(stmt)
         return result.rowcount > 0
 

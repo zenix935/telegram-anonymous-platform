@@ -8,9 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.config.messages import get_text
 from app.database.models import User
+from app.database.repositories import ChannelRepository
 from app.bot.keyboards.inline import (
     get_main_menu_inline_keyboard,
     get_cancel_inline_keyboard,
+    get_channel_inbox_selection_keyboard,
     get_settings_keyboard,
 )
 from app.services.links.link_service import LinkService
@@ -75,11 +77,26 @@ async def handle_start_command(
             await message.answer(get_text("channel_submission_disabled"))
             return
 
+        channel_repo = ChannelRepository(db_session)
+        inboxes = await channel_repo.get_channel_inboxes(channel.id)
+
+        if inboxes:
+            kb = get_channel_inbox_selection_keyboard(str(channel.id), inboxes)
+            await message.answer(
+                f"📢 <b>ارسال پیام ناشناس به کانال «{channel.title}»</b>\n\n"
+                "لطفاً مقصد پیام خود را انتخاب کنید:",
+                reply_markup=kb,
+                parse_mode="HTML",
+            )
+            return
+
         # Start anonymous channel submission
         await state.set_state(ChannelPublishStates.waiting_for_channel_post)
         await state.update_data(target_channel_id=str(channel.id))
         await message.answer(
             get_text("channel_submission_opened", channel_title=channel.title),
+            reply_markup=get_cancel_inline_keyboard(),
+            parse_mode="HTML",
         )
         return
 

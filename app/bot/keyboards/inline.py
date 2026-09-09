@@ -3,7 +3,7 @@
 from typing import List, Optional
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from app.config.messages import get_text
-from app.database.models import Conversation
+from app.database.models import Conversation, ChannelInbox
 
 
 def get_main_menu_inline_keyboard(is_admin: bool = False) -> InlineKeyboardMarkup:
@@ -265,7 +265,7 @@ def get_cancel_inline_keyboard() -> InlineKeyboardMarkup:
 
 
 def get_channel_management_keyboard(
-    channel_id: str, is_active: bool, has_slug: bool
+    channel_id: str, is_active: bool, has_slug: bool, inboxes_count: int = 0
 ) -> InlineKeyboardMarkup:
     """Keyboard for managing a connected channel."""
     toggle_text = (
@@ -289,6 +289,12 @@ def get_channel_management_keyboard(
                 callback_data=f"ch_manage:set_slug:{channel_id}",
             ),
         ],
+        [
+            InlineKeyboardButton(
+                text="➕ اضافه کردن صندوق",
+                callback_data=f"ch_inbox:add:{channel_id}",
+            ),
+        ],
     ]
     if has_slug:
         buttons[1].append(
@@ -297,8 +303,44 @@ def get_channel_management_keyboard(
                 callback_data=f"ch_manage:remove_slug:{channel_id}",
             )
         )
+    if inboxes_count > 0:
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text=f"📋 مدیریت صندوق‌ها ({inboxes_count})",
+                    callback_data=f"ch_inbox:manage:{channel_id}",
+                )
+            ]
+        )
     buttons.append(
         [InlineKeyboardButton(text=get_text("btn_back"), callback_data="nav:channels")]
+    )
+    return InlineKeyboardMarkup(inline_keyboard=buttons)
+
+
+def get_channel_inbox_selection_keyboard(
+    channel_id: str, inboxes: List[ChannelInbox]
+) -> InlineKeyboardMarkup:
+    """Keyboard for choosing submission destination when opening channel link."""
+    buttons = [
+        [
+            InlineKeyboardButton(
+                text="📢 صندوق اصلی کانال",
+                callback_data=f"ch_dest:main:{channel_id}",
+            )
+        ]
+    ]
+    for ib in inboxes:
+        buttons.append(
+            [
+                InlineKeyboardButton(
+                    text=ib.name,
+                    callback_data=f"ch_dest:inbox:{ib.id}",
+                )
+            ]
+        )
+    buttons.append(
+        [InlineKeyboardButton(text=get_text("btn_cancel"), callback_data="action:cancel")]
     )
     return InlineKeyboardMarkup(inline_keyboard=buttons)
 

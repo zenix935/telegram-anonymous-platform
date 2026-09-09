@@ -21,3 +21,5 @@ class ChannelPublishStates(StatesGroup):
     configuring_template = State()
     setting_channel_slug = State()
     waiting_for_channel_forward = State()
+    waiting_for_inbox_name = State()
+    waiting_for_inbox_link = State()
