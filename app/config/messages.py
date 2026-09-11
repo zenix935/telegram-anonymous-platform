@@ -79,7 +79,6 @@ MESSAGES: Dict[str, Dict[str, str]] = {
         "conversation_closed_by_owner": "🚪 مخاطب به این گفت‌وگو پایان داد.",
 
         # Personal Anonymous Chat (Owner side / Inbox)
-        "incoming_anonymous_message_header": "📩 <b>پیام ناشناس جدید</b>",
         "reply_mode_activated": (
             "↩️ <b>حالت پاسخ فعال شد</b>\n\n"
             "پیام بعدی شما برای کاربر ارسال می‌شود."
